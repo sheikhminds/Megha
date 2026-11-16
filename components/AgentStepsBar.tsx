@@ -4,6 +4,7 @@ import { HStack, VStack, StackItem } from '@astryxdesign/core/Layout';
 import { Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { List, ListItem } from '@astryxdesign/core/List';
 import { Badge } from '@astryxdesign/core/Badge';
 import type { AgentStep } from '@/lib/types';
 
@@ -51,15 +52,17 @@ export function AgentStepsBar({ steps, frameData, onShowBrowser }: Props) {
             </Button>
           </HStack>
 
-          {steps.map((step, index) => (
-            <HStack key={`${step.command}-${index}`} gap={2} vAlign="start" width="100%">
-              <Badge variant={step.success ? 'success' : 'error'} label={step.success ? '✓' : '✗'} />
-              <VStack gap={0} style={{ minWidth: 0 }}>
-                <Text weight="semibold">{step.command}</Text>
-                <Text type="supporting" color="secondary" maxLines={1}>{step.output}</Text>
-              </VStack>
-            </HStack>
-          ))}
+          <List density="compact" hasDividers>
+            {steps.map((step) => (
+              <ListItem
+                key={step.command}
+                itemKey={step.command}
+                label={<Text weight="semibold">{step.command}</Text>}
+                description={<Text type="supporting" color="secondary" maxLines={1}>{step.output}</Text>}
+                startContent={<Badge variant={step.success ? 'success' : 'error'} label={step.success ? '✓' : '✗'} />}
+              />
+            ))}
+          </List>
         </VStack>
       </Collapsible>
     </VStack>

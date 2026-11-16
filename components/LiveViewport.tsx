@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { VStack, HStack, StackItem } from '@astryxdesign/core/Layout';
+import { Center } from '@astryxdesign/core/Center';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Card } from '@astryxdesign/core/Card';
-import { Badge } from '@astryxdesign/core/Badge';
-import { Button } from '@astryxdesign/core/Button';
+import { IconButton } from '@astryxdesign/core/IconButton';
 import { Icon } from '@astryxdesign/core/Icon';
 import { ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
 import type { FrameEvent } from '@/lib/types';
@@ -26,11 +26,8 @@ const fill: CSSProperties = { flex: 1, minHeight: 0, minWidth: 0, width: '100%' 
 const stage: CSSProperties = {
   flex: 1,
   minHeight: 0,
+  minWidth: 0,
   width: '100%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 'var(--spacing-3)',
   overflow: 'hidden',
   position: 'relative',
 };
@@ -45,9 +42,6 @@ const canvasStyle: CSSProperties = {
 const overlayStyle: CSSProperties = {
   position: 'absolute',
   inset: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
 };
 
 const SLEEP_CSS = `
@@ -107,38 +101,44 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
         <HStack gap={3} vAlign="center" width="100%" padding={3}>
           <Heading level={3}>Live Viewport</Heading>
           <StackItem size="fill" />
-          <Badge variant={sleeping ? 'neutral' : live ? 'green' : 'neutral'} label={sleeping ? 'Resting' : live ? 'Live' : 'Waiting'} />
+          <Text type="supporting" color="secondary">
+            {sleeping ? 'Resting' : live ? 'Live' : 'Waiting'}
+          </Text>
           <Text type="supporting" color="secondary">
             {size.width}×{size.height} · {frameCount} frames
           </Text>
-          <Button
+          <IconButton
             label="Hide browser"
+            tooltip="Hide browser"
             size="sm"
             variant="ghost"
-            isIconOnly
             icon={<Icon icon={ChevronDoubleRightIcon} size="sm" />}
             onClick={onHide}
           />
         </HStack>
 
-        <VStack style={stage}>
+        <VStack style={stage} padding={3} hAlign="center" vAlign="center">
           <canvas ref={canvasRef} style={{ ...canvasStyle, visibility: sleeping || !rendered ? 'hidden' : 'visible' }} aria-label="Live browser viewport" />
 
           {(sleeping || !rendered) && (
-            <VStack style={overlayStyle} gap={3} align="center">
-              <img
-                src="/logo.png"
-                alt=""
-                className={sleeping ? 'megha-sleep-logo' : undefined}
-                style={{ width: 'var(--spacing-10)', height: 'var(--spacing-10)', objectFit: 'contain' }}
-              />
-              <VStack gap={0} align="center">
-                <Text weight="semibold">{sleeping ? 'Browser is resting' : 'Waiting for the first frame…'}</Text>
-                <Text type="supporting" color="secondary">
-                  {sleeping ? 'Megha will wake it when there is work to do.' : 'Open a page to begin streaming.'}
-                </Text>
+            <Center style={overlayStyle}>
+              <VStack gap={3} hAlign="center" vAlign="center">
+                <img
+                  src="/logo.png"
+                  alt=""
+                  className={sleeping ? 'megha-sleep-logo' : undefined}
+                  width={40}
+                  height={40}
+                  style={{ objectFit: 'contain' }}
+                />
+                <VStack gap={0} hAlign="center">
+                  <Text weight="semibold">{sleeping ? 'Browser is resting' : 'Waiting for the first frame…'}</Text>
+                  <Text type="supporting" color="secondary">
+                    {sleeping ? 'Megha will wake it when there is work to do.' : 'Open a page to begin streaming.'}
+                  </Text>
+                </VStack>
               </VStack>
-            </VStack>
+            </Center>
           )}
         </VStack>
       </VStack>

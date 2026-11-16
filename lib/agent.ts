@@ -44,6 +44,41 @@ export function planLocally(text: string): Array<{ command: string; reason: stri
     if (!steps.some((s) => s.command === command)) steps.push({ command, reason });
   };
 
+  const SITES: Record<string, string> = {
+    facebook: 'https://www.facebook.com',
+    instagram: 'https://www.instagram.com',
+    google: 'https://www.google.com',
+    youtube: 'https://www.youtube.com',
+    github: 'https://github.com',
+    linkedin: 'https://www.linkedin.com',
+    twitter: 'https://x.com',
+    amazon: 'https://www.amazon.com',
+    wikipedia: 'https://www.wikipedia.org',
+  };
+  const siteName = Object.keys(SITES).find((name) =>
+    new RegExp(`\\b${name}\\b`, 'i').test(input),
+  );
+  const siteUrl = siteName ? SITES[siteName] : null;
+  const wantsSignup = /\b(create|make|open|set up)\b.*\b(account|profile)\b|\bsign up\b|\bregister\b/i.test(input);
+
+  if (siteUrl && wantsSignup) {
+    push(`open ${siteUrl}`, `Opening ${siteName}`);
+    push('snapshot -i', 'Finding the sign-up link');
+    push(
+      siteName === 'facebook'
+        ? 'find role link click --name "Create new account"'
+        : 'find role link click --name "Sign up"',
+      'Opening the registration form',
+    );
+    return steps;
+  }
+
+  if (siteUrl && (/\b(open|go to|navigate|visit)\b/i.test(input) || /\b(facebook|instagram|google|youtube|github|linkedin|twitter|amazon|wikipedia)\b/i.test(input))) {
+    push(`open ${siteUrl}`, `Opening ${siteName}`);
+    push('snapshot -i', 'Reading the page');
+    return steps;
+  }
+
   // Compound "open X and search for Y" requests: complete the whole task.
   const searchQuery = input
     .match(/(?:search|look up|look for|find)\s+(?:details\s+)?(?:about|on|for)?\s*["“]?([^"”]+?)["”]?\s*$/i)?.[1]
@@ -153,6 +188,20 @@ export function planLocally(text: string): Array<{ command: string; reason: stri
     }
   }
 
+  // Open-ended questions: research them on the web instead of showing help.
+  if (steps.length === 0) {
+    const query = input
+      .replace(/^(?:who|what|why|how|when|where)\s+(?:is|are|was|were|do|does|did)\s+/i, '')
+      .replace(/^(?:who|what|why|how|when|where|tell me about|find out about|search for|look up)\s+/i, '')
+      .replace(/[?!.]+$/, '')
+      .trim();
+    if (query.length > 2) {
+      const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      push(`open ${url}`, `Researching "${query}"`);
+      push('snapshot -i', 'Reading the search results');
+    }
+  }
+
   return steps;
 }
 
@@ -193,7 +242,7 @@ interface AIPlan {
   raw: string;
 }
 
-async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
+async function planWithAI(messages: ChatMessage[], signal?: AbortSignal): Promise<AIPlan | null> {
   const provider = getProvider();
   if (!provider) return null;
 
@@ -244,7 +293,7 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
           ...history,
         ],
       }),
-      signal: AbortSignal.timeout(180_000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(180_000)]) : AbortSignal.timeout(180_000),
     });
 
     if (!response.ok) {
@@ -255,6 +304,16 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
     const message = json?.choices?.[0]?.message ?? {};
     const content = String(message.content ?? '').trim();
     if (!content) {
+      const reasoning = String(message.reasoning_content ?? '');
+      const url = reasoning.match(/https?:\/\/[^\s"'”<>]+/)?.[0];
+      if (url) {
+        return {
+          command: `open ${url}`,
+          answer: 'Opening the page I found.',
+          reasoning_content: message.reasoning_content || undefined,
+          raw: reasoning,
+        };
+      }
       lastError = 'model returned no final content';
       continue;
     }
@@ -274,7 +333,7 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
 
 const MAX_AGENT_STEPS = 8;
 
-export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
+export async function runAgent(messages: ChatMessage[], signal?: AbortSignal): Promise<AgentReply> {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
   const mode: 'local' | 'ai' = getProvider() ? 'ai' : 'local';
   const steps: AgentReply['steps'] = [];
@@ -288,7 +347,7 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
       return { output, success: false };
     }
     try {
-      const output = await runBrowser(args, 60_000);
+      const output = await runBrowser(args, 60_000, signal);
       steps.push({ command, output, success: true });
       return { output, success: true };
     } catch (error) {
@@ -303,9 +362,10 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
     let lastPlan: AIPlan | null = null;
 
     for (let iteration = 0; iteration < MAX_AGENT_STEPS; iteration += 1) {
+      if (signal?.aborted) break;
       let plan: AIPlan | null;
       try {
-        plan = await planWithAI(transcript);
+        plan = await planWithAI(transcript, signal);
       } catch {
         aiFailed = true;
         plan = null;
@@ -388,7 +448,10 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
     };
   }
 
-  for (const step of planned) await execute(step.command);
+  for (const step of planned) {
+    if (signal?.aborted) break;
+    await execute(step.command);
+  }
 
   const outputs = steps
     .map((s) => `$ agent-browser ${s.command}\n${s.output}`)
@@ -396,7 +459,9 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
     .trim();
 
   return {
-    answer: steps.length === 1 ? `Ran \`${steps[0].command}\`.` : `Ran ${steps.length} commands.`,
+    answer: signal?.aborted ? 'Stopped.' : /\b(create|make|open|set up)\b.*\b(account|profile)\b|\bsign up\b|\bregister\b/i.test(lastUser)
+      ? 'Opened the sign-up page. I need your details (name, email, password, birthday) to fill the form.'
+      : steps.length === 1 ? `Ran \`${steps[0].command}\`.` : `Ran ${steps.length} commands.`,
     steps,
     mode: aiFailed ? 'local' : mode,
     iterations: steps.length,

@@ -6,11 +6,12 @@ const execFileAsync = promisify(execFile);
 export const AGENT_BROWSER_BIN = process.env.AGENT_BROWSER_BIN || 'agent-browser';
 
 /** Run an agent-browser command with arguments (never through a shell). */
-export async function runBrowser(args: string[], timeout = 120_000): Promise<string> {
+export async function runBrowser(args: string[], timeout = 120_000, signal?: AbortSignal): Promise<string> {
   const { stdout, stderr } = await execFileAsync(AGENT_BROWSER_BIN, args, {
     timeout,
     maxBuffer: 12 * 1024 * 1024,
     env: process.env,
+    ...(signal ? { signal } : {}),
   });
   return `${stdout}${stderr}`.trim();
 }

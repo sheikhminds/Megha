@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const reply = await runAgent(messages);
+    const reply = await runAgent(messages, request.signal);
     return NextResponse.json(reply);
   } catch (error) {
     return NextResponse.json({

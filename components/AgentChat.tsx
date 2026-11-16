@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { VStack, HStack } from '@astryxdesign/core/Layout';
 import { Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
@@ -15,6 +15,8 @@ import {
   ChatToolCalls,
 } from '@astryxdesign/core/Chat';
 import { CodeBlock } from '@astryxdesign/core/CodeBlock';
+import { EmptyState } from '@astryxdesign/core/EmptyState';
+import {useStreamingText} from '@astryxdesign/core/hooks';
 import { AgentStepsBar } from '@/components/AgentStepsBar';
 import type { AgentStep } from '@/lib/types';
 
@@ -42,6 +44,29 @@ const chatStyle: CSSProperties = { flex: 1, minHeight: 0, width: '100%' };
 let idCounter = 0;
 const nextId = () => `m-${Date.now().toString(36)}-${++idCounter}`;
 
+/** Renders assistant message text with a smooth streaming reveal. */
+function StreamingMessageContent({
+  content,
+  pending,
+}: {
+  content: string;
+  pending: boolean;
+}) {
+  const [streaming, setStreaming] = useState(false);
+  const prevContent = useRef(content);
+
+  // Kick off a reveal when fresh answer text arrives after an empty draft.
+  useEffect(() => {
+    if (content.length > 0 && prevContent.current.length === 0) {
+      setStreaming(true);
+    }
+    prevContent.current = content;
+  }, [content]);
+
+  const displayed = useStreamingText(content, streaming);
+  return pending && content.length === 0 ? 'Working…' : <>{displayed}</>;
+}
+
 interface Props {
   steps: AgentStep[];
   browserHidden: boolean;
@@ -62,6 +87,7 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'local' | 'ai'>('local');
   /** The agent asked the user for help and is waiting for a reply. */
+  const abortRef = useRef<AbortController | null>(null);
   const [waitingForInput, setWaitingForInput] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
 
@@ -93,6 +119,9 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
       { id: nextId(), role: 'user', content },
       { id: pendingId, role: 'assistant', content: '', pending: true },
     ]);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setBusy(true);
     onSteps([]);
 
@@ -101,6 +130,7 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [...history, { role: 'user', content }] }),
+        signal: controller.signal,
       });
       const data = await response.json();
       setMode(data.mode === 'ai' ? 'ai' : 'local');
@@ -133,6 +163,7 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
         setBusy(false);
       }
     } catch (error) {
+      const stopped = controller.signal.aborted;
       setWaitingForInput(false);
       setCurrentQuestion(null);
       setMessages((current) =>
@@ -140,7 +171,7 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
           m.id === pendingId
             ? {
                 ...m,
-                content: `Request failed: ${error instanceof Error ? error.message : String(error)}`,
+                content: stopped ? 'Stopped.' : `Request failed: ${error instanceof Error ? error.message : String(error)}`,
                 pending: false,
               }
             : m,
@@ -156,7 +187,13 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
       <ChatLayout
         density="compact"
         style={chatStyle}
-        emptyState={<Text color="secondary">Ask Megha to control the browser…</Text>}
+        emptyState={
+          <EmptyState
+            title="Ask Megha"
+            description="Describe a browser task and she will drive it step by step."
+            isCompact
+          />
+        }
         composer={
           <VStack gap={2} width="100%">
             {browserHidden && steps.length > 0 && (
@@ -173,7 +210,7 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
               placeholder={waitingForInput ? 'Reply to Megha…' : 'Ask Megha to control the browser…'}
               input={<ChatComposerInput />}
               isStopShown={busy && !waitingForInput}
-              onStop={() => setBusy(false)}
+              onStop={() => abortRef.current?.abort()}
             />
           </VStack>
         }
@@ -186,7 +223,12 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
               avatar={message.role === 'assistant' ? <Avatar name="Megha" size="sm" /> : undefined}
             >
               <ChatMessageBubble variant={message.role === 'assistant' ? 'ghost' : 'filled'}>
-                {message.pending ? 'Working…' : message.content}
+                {message.role === 'assistant' ? (
+                  <StreamingMessageContent
+                    content={message.content}
+                    pending={message.pending ?? false}
+                  />
+                ) : message.content}
               </ChatMessageBubble>
 
               {message.steps && message.steps.length > 0 && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HStack, VStack, StackItem } from '@astryxdesign/core/Layout';
 import { Heading } from '@astryxdesign/core/Text';
 import type { AgentStep } from '@/lib/types';
@@ -10,15 +10,7 @@ import type { BrowserEvent, FrameEvent } from '@/lib/types';
 
 const STREAM_EVENTS = ['frame', 'status', 'tabs', 'url', 'command', 'result', 'console', 'info', 'error', 'message'];
 
-const workspaceStyle: CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  width: '100%',
-  gap: 'var(--spacing-3)',
-  padding: 'var(--spacing-3)',
-};
-const streamStyle: CSSProperties = { flex: 'var(--stream-flex)', minWidth: 0, minHeight: 'var(--stream-min-height)' };
-const chatStyle: CSSProperties = { flex: 'var(--chat-flex)', minWidth: 0, minHeight: 'var(--chat-min-height)' };
+
 
 const RESPONSIVE_CSS = `
 .megha-workspace { --chat-panel-width: 26rem; --stream-flex: 1 1 55%; --stream-min-height: 0; --chat-flex: 0 0 var(--chat-panel-width); --chat-min-height: 0; }
@@ -33,7 +25,7 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [screencasting, setScreencasting] = useState(false);
   const [size, setSize] = useState({ width: 1280, height: 720 });
-  const [browserHidden, setBrowserHidden] = useState(false);
+  const [browserHidden, setBrowserHidden] = useState(true);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
   const lastFrameAt = useRef(0);
@@ -107,14 +99,14 @@ export default function Home() {
     <VStack gap={0} width="100%" height="100dvh" style={{ containerType: 'inline-size', containerName: 'megha' }}>
       <style>{RESPONSIVE_CSS}</style>
       <HStack gap={3} vAlign="center" width="100%" padding={3}>
-        <img src="/logo.png" alt="Megha logo" width={32} height={32} style={{ objectFit: 'contain' }} />
+        <img src="/logo.png" alt="Megha logo" width={32} height={32} />
         <Heading level={2}>Megha</Heading>
         <StackItem size="fill" />
       </HStack>
 
-      <HStack className="megha-workspace" style={workspaceStyle}>
+      <HStack className="megha-workspace" gap={3} padding={3} width="100%" style={{ flex: 1, minHeight: 0 }}>
         {!browserHidden && (
-          <VStack className="megha-stream" style={streamStyle}>
+          <VStack className="megha-stream" width="100%" minHeight={0} style={{ flex: 'var(--stream-flex)', minWidth: 0, minHeight: 'var(--stream-min-height)' }}>
             <LiveViewport
               frame={frame}
               frameCount={frameCount}
@@ -126,7 +118,7 @@ export default function Home() {
             />
           </VStack>
         )}
-        <VStack className="megha-chat" style={browserHidden ? { ...chatStyle, flex: '1 1 auto' } : chatStyle}>
+        <VStack className="megha-chat" width="100%" minHeight={0} style={browserHidden ? { flex: '1 1 auto', minWidth: 0, minHeight: 0 } : { flex: 'var(--chat-flex)', minWidth: 0, minHeight: 'var(--chat-min-height)' }}>
           <AgentChat steps={agentSteps} browserHidden={browserHidden} frameData={frame ? `data:image/jpeg;base64,${frame.data}` : null} onSteps={setAgentSteps} onShowBrowser={() => setBrowserHidden(false)} />
         </VStack>
       </HStack>
