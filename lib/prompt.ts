@@ -47,41 +47,22 @@ interface CommandDoc {
 }
 
 const promptComponents = {
-  Identity: ({ name, tagline }: { name: string; tagline: string }) =>
-    `Agent name: ${name}\nTagline: ${tagline}\n`,
+  Identity: ({ name }: { name: string }) => `Agent name: ${name}\n`,
 
   CommandGuide: ({ commands }: { commands: CommandDoc[] }) =>
-    `Available commands (use at most one per turn):\n${commands
-      .map((command) => `- ${command.name} — ${command.description}`)
-      .join('\n')}\n`,
+    `Commands:\n${commands.map((command) => `- ${command.name}`).join('\n')}\n`,
 
   AgentLoop: ({ maxSteps }: { maxSteps: number }) =>
     [
-      `Agent loop (up to ${maxSteps} steps):`,
-      '- You will receive the result of each command before your next turn. Read it carefully.',
-      '- If the task is not finished, return another command. DO NOT stop after just opening a page.',
-      '- For example, "open google and search for X" means: open google, then fill the search box, then press Enter, then read the results.',
-      '- Verify the result of each action before moving on; take a new snapshot after navigation or DOM changes because refs go stale.',
-      '- When the task is genuinely complete, return an empty command with your final answer.',
-      '- Never ask the user for permission between steps — keep working autonomously.',
+      `Loop (max ${maxSteps} steps): after each command you get its output. Keep issuing commands until the task is done; do not stop after merely opening a page. When finished, return an empty command with your final answer.`,
       '',
     ].join('\n'),
-
-  Steps: ({ children }: { children: unknown }) => `Workflow:\n${inline(children)}\n`,
-
-  Step: ({ title, children }: { title: string; children: unknown }) =>
-    `- ${title}: ${inline(children)}`,
 
   ResponseContract: () =>
     [
-      'Response contract:',
-      'Return ONLY a JSON object, with no prose around it:',
-      '{"command": "<one agent-browser command, or an empty string>", "answer": "<short message to the user>"}',
-      'Set command to "" only when the task is complete or you can answer from information you already have.',
+      'Return ONLY JSON: {"command":"<one command or empty>","answer":"<short message>"}',
       '',
     ].join('\n'),
-
-  Guardrails: ({ children }: { children: unknown }) => `Guardrails:\n${inline(children)}\n`,
 };
 
 export interface PromptContext {
@@ -111,6 +92,7 @@ export async function buildSystemPrompt(context: PromptContext): Promise<string>
 
   const tree = (Content as unknown as (props: PromptContext) => unknown)(context);
   const prompt = toText(tree).replace(/\n{3,}/g, '\n\n').trim();
+  if (process.env.DEBUG_AGENT === '1') console.error('[prompt]\n' + prompt);
   cache.set(key, prompt);
   return prompt;
 }

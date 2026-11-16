@@ -167,7 +167,7 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
 
   // Beam is a reasoning model — it needs a large budget to finish thinking and
   // still emit a final `content` message (the same budget used in its API example).
-  const maxTokens = provider.name === 'reflection' ? 16000 : 500;
+  const maxTokens = provider.name === 'reflection' ? 4000 : 500;
 
   const systemPrompt = await buildSystemPrompt({
     name: 'Megha',
@@ -195,8 +195,7 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
       },
       body: JSON.stringify({
         model: provider.model,
-        temperature: 0.7,
-        top_p: 0.9,
+        temperature: 0,
         max_tokens: maxTokens,
         stream: false,
         messages: [
@@ -215,6 +214,13 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
       throw new Error(`${provider.name} returned ${response.status}: ${detail.slice(0, 600)}`);
     }
     const json = await response.json();
+    if (process.env.DEBUG_AGENT === '1') {
+      console.error('[agent] finish_reason:', json?.choices?.[0]?.finish_reason,
+        'usage:', JSON.stringify(json?.usage),
+        'message keys:', Object.keys(json?.choices?.[0]?.message ?? {}),
+        'content:', String(json?.choices?.[0]?.message?.content ?? '').slice(0, 300),
+        'reasoning:', String(json?.choices?.[0]?.message?.reasoning_content ?? '').slice(-300));
+    }
     const message = json?.choices?.[0]?.message ?? {};
     const content = String(message.content ?? '').trim();
     if (!content) {
