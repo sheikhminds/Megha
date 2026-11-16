@@ -1,18 +1,32 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { HStack, VStack } from '@astryxdesign/core/Layout';
+import { Heading } from '@astryxdesign/core/Text';
 import { AgentChat } from '@/components/AgentChat';
 import { LiveViewport } from '@/components/LiveViewport';
 import type { BrowserEvent, FrameEvent } from '@/lib/types';
 
-interface StatusData {
-  connected: boolean;
-  screencasting: boolean;
-  viewportWidth?: number;
-  viewportHeight?: number;
-}
-
 const STREAM_EVENTS = ['frame', 'status', 'tabs', 'url', 'command', 'result', 'console', 'info', 'error', 'message'];
+
+const workspaceStyle: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  width: '100%',
+  gap: 'var(--spacing-3)',
+  padding: 'var(--spacing-3)',
+};
+const streamStyle: CSSProperties = { flex: '1 1 55%', minWidth: 0, minHeight: 0 };
+const chatStyle: CSSProperties = { flex: '0 0 var(--chat-panel-width)', minWidth: 0, minHeight: 0 };
+
+const RESPONSIVE_CSS = `
+.megha-workspace { --chat-panel-width: 26rem; }
+@container megha (max-width: 60rem) {
+  .megha-workspace { --chat-panel-width: 100%; flex-direction: column; overflow-y: auto; }
+  .megha-stream { flex: 0 0 45dvh; min-height: 45dvh; }
+  .megha-chat { flex: 1 0 55dvh; min-height: 55dvh; }
+}
+`;
 
 export default function Home() {
   const [frame, setFrame] = useState<FrameEvent | null>(null);
@@ -20,7 +34,6 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [screencasting, setScreencasting] = useState(false);
   const [size, setSize] = useState({ width: 1280, height: 720 });
-
   const lastFrameAt = useRef(0);
 
   useEffect(() => {
@@ -32,7 +45,7 @@ export default function Home() {
         const response = await fetch('/api/status?start=1');
         const status = await response.json();
         if (cancelled || !status?.data) return;
-        const data = status.data as StatusData;
+        const data = status.data;
         setConnected(Boolean(data.connected));
         setScreencasting(Boolean(data.screencasting));
         if (data.viewportWidth && data.viewportHeight) {
@@ -62,7 +75,6 @@ export default function Home() {
             }
             return;
           }
-
           if (type === 'status') {
             if (message.connected !== undefined) setConnected(Boolean(message.connected));
             if (message.screencasting !== undefined) setScreencasting(Boolean(message.screencasting));
@@ -75,7 +87,6 @@ export default function Home() {
     }
 
     connect();
-
     return () => {
       cancelled = true;
       source?.close();
@@ -83,18 +94,15 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <div className="brand">
-          <img src="/logo.png" alt="Megha logo" className="brand-logo" />
-          <div className="brand-text">
-            <h1>Megha</h1>
-          </div>
-        </div>
-      </header>
+    <VStack gap={0} width="100%" height="100dvh" style={{ containerType: 'inline-size', containerName: 'megha' }}>
+      <style>{RESPONSIVE_CSS}</style>
+      <HStack gap={3} vAlign="center" width="100%" padding={3}>
+        <img src="/logo.png" alt="Megha logo" width={32} height={32} style={{ objectFit: 'contain' }} />
+        <Heading level={2}>Megha</Heading>
+      </HStack>
 
-      <div className="workspace">
-        <div className="stream-column">
+      <HStack className="megha-workspace" style={workspaceStyle}>
+        <VStack className="megha-stream" style={streamStyle}>
           <LiveViewport
             frame={frame}
             frameCount={frameCount}
@@ -102,12 +110,11 @@ export default function Home() {
             screencasting={screencasting}
             size={size}
           />
-        </div>
-
-        <aside className="chat-column">
+        </VStack>
+        <VStack className="megha-chat" style={chatStyle}>
           <AgentChat />
-        </aside>
-      </div>
-    </main>
+        </VStack>
+      </HStack>
+    </VStack>
   );
 }

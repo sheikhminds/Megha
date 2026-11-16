@@ -214,13 +214,6 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
       throw new Error(`${provider.name} returned ${response.status}: ${detail.slice(0, 600)}`);
     }
     const json = await response.json();
-    if (process.env.DEBUG_AGENT === '1') {
-      console.error('[agent] finish_reason:', json?.choices?.[0]?.finish_reason,
-        'usage:', JSON.stringify(json?.usage),
-        'message keys:', Object.keys(json?.choices?.[0]?.message ?? {}),
-        'content:', String(json?.choices?.[0]?.message?.content ?? '').slice(0, 300),
-        'reasoning:', String(json?.choices?.[0]?.message?.reasoning_content ?? '').slice(-300));
-    }
     const message = json?.choices?.[0]?.message ?? {};
     const content = String(message.content ?? '').trim();
     if (!content) {
@@ -310,7 +303,9 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
       });
       transcript.push({
         role: 'user',
-        content: `Command result for "${command}" (success: ${result.success}):\n${result.output.slice(0, 4000)}`,
+        content:
+          `Command result for "${command}" (success: ${result.success}):\n${result.output.slice(0, 4000)}` +
+          '\nIf the task is not finished, return another command. When finished, return an empty command with your final answer.',
       });
     }
 

@@ -1,6 +1,22 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { VStack, HStack, StackItem } from '@astryxdesign/core/Layout';
+import { Text } from '@astryxdesign/core/Text';
+import { Heading } from '@astryxdesign/core/Text';
+import { Button } from '@astryxdesign/core/Button';
+import { Avatar } from '@astryxdesign/core/Avatar';
+import { Badge } from '@astryxdesign/core/Badge';
+import {
+  ChatLayout,
+  ChatMessage,
+  ChatMessageBubble,
+  ChatMessageList,
+  ChatComposer,
+  ChatComposerInput,
+  ChatToolCalls,
+} from '@astryxdesign/core/Chat';
+import { CodeBlock } from '@astryxdesign/core/CodeBlock';
 
 interface Step {
   command: string;
@@ -8,7 +24,7 @@ interface Step {
   success: boolean;
 }
 
-interface ChatMessage {
+interface ChatMessageData {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -20,34 +36,33 @@ interface ChatMessage {
 }
 
 const SUGGESTIONS = [
-  'Open example.com',
+  'Open example.com and tell me the page title',
   'Show me the interactive elements',
-  'What is the page title?',
-  'Check console errors',
+  'Check the console for errors',
 ];
+
+const headerStyle: CSSProperties = {
+  width: '100%',
+  padding: 'var(--spacing-3) var(--spacing-4)',
+  borderBottom: '1px solid var(--color-border)',
+};
+
+const chatStyle: CSSProperties = { flex: 1, minHeight: 0, width: '100%' };
 
 let idCounter = 0;
 const nextId = () => `m-${Date.now().toString(36)}-${++idCounter}`;
 
 export function AgentChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<ChatMessageData[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      content:
-        'Hi — I’m Megha, your browser agent. Tell me what to do in plain English and I’ll drive the browser. ' +
-        'You can watch every action live on the left.',
+      content: 'Hi — I’m Megha, your browser agent. Tell me what to do in plain English and I’ll drive the browser. You can watch every action live on the left.',
       mode: 'local',
     },
   ]);
-  const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'local' | 'ai'>('local');
-  const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages]);
 
   useEffect(() => {
     fetch('/api/status')
@@ -55,16 +70,13 @@ export function AgentChat() {
       .then((data) => {
         if (data?.agentMode === 'ai') setMode('ai');
       })
-      .catch(() => {
-        /* keep local mode */
-      });
+      .catch(() => undefined);
   }, []);
 
   const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
 
-    const userMessage: ChatMessage = { id: nextId(), role: 'user', content };
     const pendingId = nextId();
     const history = messages
       .filter((m) => !m.pending)
@@ -76,10 +88,9 @@ export function AgentChat() {
 
     setMessages((current) => [
       ...current,
-      userMessage,
+      { id: nextId(), role: 'user', content },
       { id: pendingId, role: 'assistant', content: '', pending: true },
     ]);
-    setInput('');
     setBusy(true);
 
     try {
@@ -123,91 +134,91 @@ export function AgentChat() {
   };
 
   return (
-    <section className="chat-panel">
-      <div className="panel-heading">
-        <div className="heading-left">
-          <span className="agent-avatar">
-            <img src="/logo.png" alt="" />
-          </span>
-          <div>
-            <h2>Agent Chat</h2>
-            <span className="chat-subtitle">
-              Browser control agent · {mode === 'ai' ? 'Reflection Beam' : 'local mode'}
-            </span>
-          </div>
-        </div>
-        <div className="header-actions">
-          <button
-            className="continue-button"
-            onClick={() => void send('Continue working on the last task until it is finished.')}
-            disabled={busy || messages.length <= 1}
-          >
-            Continue
-          </button>
-          <span className={`mode-badge ${mode}`}>{mode === 'ai' ? 'AI' : 'LOCAL'}</span>
-        </div>
-      </div>
+    <VStack gap={0} style={{ flex: 1, minHeight: 0, width: '100%' }}>
+      <HStack gap={3} vAlign="center" style={headerStyle}>
+        <Avatar name="Megha" size="sm" />
+        <VStack gap={0}>
+          <Heading level={3}>Megha Agent</Heading>
+          <Text type="supporting" color="secondary">Browser control agent</Text>
+        </VStack>
+        <StackItem size="fill" />
+        <Badge variant={mode === 'ai' ? 'green' : 'neutral'} label={mode === 'ai' ? 'AI' : 'LOCAL'} />
+        <Button
+          label="Continue working on the last task"
+          size="sm"
+          variant="secondary"
+          isDisabled={busy || messages.length <= 1}
+          onClick={() => void send('Continue working on the last task until it is finished.')}
+        >
+          Continue
+        </Button>
+      </HStack>
 
-      <div className="chat-list" ref={listRef}>
-        {messages.map((message) => (
-          <div key={message.id} className={`chat-message ${message.role}`}>
-            <div className="message-bubble">{message.pending ? <span className="typing"><i /><i /><i /></span> : message.content}</div>
-            {message.steps && message.steps.length > 0 && (
-              <div className="message-steps">
-                {message.steps.map((step, index) => (
-                  <details key={`${step.command}-${index}`}>
-                    <summary>
-                      <span className={`step-status ${step.success ? 'ok' : 'fail'}`}>
-                        {step.success ? '✓' : '✗'}
-                      </span>
-                      <code>{step.command}</code>
-                    </summary>
-                    <pre>{step.output}</pre>
-                  </details>
-                ))}
-              </div>
-            )}
-            {message.iterations !== undefined && message.iterations > 0 && (
-              <span className="iteration-note">Agent worked through {message.iterations} step{message.iterations === 1 ? '' : 's'}</span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {messages.length <= 1 && (
-        <div className="chat-suggestions">
-          {SUGGESTIONS.map((suggestion) => (
-            <button key={suggestion} onClick={() => send(suggestion)} disabled={busy}>
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <form
-        className="chat-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send(input);
-        }}
+      <ChatLayout
+        density="compact"
+        style={chatStyle}
+        emptyState={<Text color="secondary">Ask Megha to control the browser…</Text>}
+        composer={
+          <ChatComposer
+            onSubmit={(value) => void send(value)}
+            placeholder="Ask Megha to control the browser…"
+            input={<ChatComposerInput />}
+            isStopShown={busy}
+            onStop={() => setBusy(false)}
+          />
+        }
       >
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              void send(input);
-            }
-          }}
-          placeholder="Ask the agent to control the browser…"
-          rows={2}
-          spellCheck={false}
-        />
-        <button type="submit" disabled={busy || !input.trim()}>
-          {busy ? '…' : 'Send'}
-        </button>
-      </form>
-    </section>
+        <ChatMessageList>
+          {messages.map((message) => (
+            <ChatMessage
+              key={message.id}
+              sender={message.role}
+              avatar={message.role === 'assistant' ? <Avatar name="Megha" size="sm" /> : undefined}
+            >
+              <ChatMessageBubble variant={message.role === 'assistant' ? 'ghost' : 'filled'}>
+                {message.pending ? 'Working…' : message.content}
+              </ChatMessageBubble>
+
+              {message.steps && message.steps.length > 0 && (
+                <ChatToolCalls
+                  defaultIsExpanded
+                  label={`${message.steps.length} browser steps`}
+                  calls={message.steps.map((step, index) => ({
+                    key: `${step.command}-${index}`,
+                    name: 'agent-browser',
+                    target: step.command,
+                    status: step.success ? 'complete' : 'error',
+                    resultDetail: <CodeBlock language="text" code={step.output} />,
+                  }))}
+                />
+              )}
+
+              {message.iterations !== undefined && message.iterations > 0 && (
+                <Text type="supporting" color="secondary">
+                  {message.iterations} step{message.iterations === 1 ? '' : 's'} taken
+                </Text>
+              )}
+            </ChatMessage>
+          ))}
+
+          {messages.length === 1 && (
+            <HStack gap={2} wrap="wrap">
+              {SUGGESTIONS.map((suggestion) => (
+                <Button
+                  key={suggestion}
+                  label={suggestion}
+                  size="sm"
+                  variant="secondary"
+                  isDisabled={busy}
+                  onClick={() => void send(suggestion)}
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </HStack>
+          )}
+        </ChatMessageList>
+      </ChatLayout>
+    </VStack>
   );
 }

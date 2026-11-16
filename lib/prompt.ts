@@ -47,22 +47,13 @@ interface CommandDoc {
 }
 
 const promptComponents = {
-  Identity: ({ name }: { name: string }) => `Agent name: ${name}\n`,
+  Identity: ({ name }: { name: string }) => `You are ${name}.`,
 
   CommandGuide: ({ commands }: { commands: CommandDoc[] }) =>
-    `Commands:\n${commands.map((command) => `- ${command.name}`).join('\n')}\n`,
-
-  AgentLoop: ({ maxSteps }: { maxSteps: number }) =>
-    [
-      `Loop (max ${maxSteps} steps): after each command you get its output. Keep issuing commands until the task is done; do not stop after merely opening a page. When finished, return an empty command with your final answer.`,
-      '',
-    ].join('\n'),
+    `Commands: ${commands.map((command) => command.name).join(', ')}.\n`,
 
   ResponseContract: () =>
-    [
-      'Return ONLY JSON: {"command":"<one command or empty>","answer":"<short message>"}',
-      '',
-    ].join('\n'),
+    `{"command":"<one command or empty>","answer":"<short answer>"}\n`,
 };
 
 export interface PromptContext {
@@ -92,7 +83,6 @@ export async function buildSystemPrompt(context: PromptContext): Promise<string>
 
   const tree = (Content as unknown as (props: PromptContext) => unknown)(context);
   const prompt = toText(tree).replace(/\n{3,}/g, '\n\n').trim();
-  if (process.env.DEBUG_AGENT === '1') console.error('[prompt]\n' + prompt);
   cache.set(key, prompt);
   return prompt;
 }
