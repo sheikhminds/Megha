@@ -53,7 +53,7 @@ const promptComponents = {
     `Commands: ${commands.map((command) => command.name).join(', ')}.\n`,
 
   ResponseContract: () =>
-    `{"command":"<one command or empty>","answer":"<short answer>"}\n`,
+    `{"command":"<one agent-browser command or empty>","answer":"<short answer>","question":"<only when you need the user's help to continue; otherwise leave empty>"}\n`,
 };
 
 export interface PromptContext {

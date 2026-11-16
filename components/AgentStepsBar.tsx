@@ -1,40 +1,56 @@
 'use client';
 
-import { useState } from 'react';
 import { HStack, VStack, StackItem } from '@astryxdesign/core/Layout';
 import { Text } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
+import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { Badge } from '@astryxdesign/core/Badge';
 import type { AgentStep } from '@/lib/types';
 
 interface Props {
   steps: AgentStep[];
+  frameData: string | null;
+  onShowBrowser: () => void;
 }
 
-export function AgentStepsBar({ steps }: Props) {
-  const [expanded, setExpanded] = useState(false);
-
+export function AgentStepsBar({ steps, frameData, onShowBrowser }: Props) {
   return (
-    <VStack gap={2} padding={2} width="100%">
-      <HStack gap={2} vAlign="center" width="100%">
-        <Text weight="semibold">Agent steps</Text>
-        <Badge variant="neutral" label={String(steps.length)} />
-        <StackItem size="fill" />
-        <Button
-          label={expanded ? 'Collapse agent steps' : 'Expand agent steps'}
-          size="sm"
-          variant="ghost"
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {expanded ? 'Collapse' : 'Expand'}
-        </Button>
-      </HStack>
+    <VStack gap={1} width="100%">
+      <Collapsible
+        defaultIsOpen={false}
+        trigger={
+          <HStack gap={2} vAlign="center" width="100%">
+            <img
+              src={frameData || '/logo.png'}
+              alt="Browser preview"
+              style={{
+                width: 'var(--spacing-10)',
+                height: 'var(--spacing-8)',
+                objectFit: 'cover',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)',
+                flexShrink: 0,
+                display: 'block',
+              }}
+            />
+            <VStack gap={0}>
+              <Text weight="semibold">Browser preview</Text>
+              <Text type="supporting" color="secondary">
+                {steps.length} step{steps.length === 1 ? '' : 's'} · tap to expand
+              </Text>
+            </VStack>
+          </HStack>
+        }
+      >
+        <VStack gap={2} width="100%" padding={2}>
+          <HStack gap={2} vAlign="center" width="100%">
+            <Text weight="semibold">Agent steps</Text>
+            <StackItem size="fill" />
+            <Button label="Show full browser" size="sm" variant="secondary" onClick={onShowBrowser}>
+              Show full browser
+            </Button>
+          </HStack>
 
-      {expanded && (
-        <VStack gap={1} width="100%">
-          {steps.length === 0 && (
-            <Text type="supporting" color="secondary">No steps yet — ask Megha to do something.</Text>
-          )}
           {steps.map((step, index) => (
             <HStack key={`${step.command}-${index}`} gap={2} vAlign="start" width="100%">
               <Badge variant={step.success ? 'success' : 'error'} label={step.success ? '✓' : '✗'} />
@@ -45,7 +61,7 @@ export function AgentStepsBar({ steps }: Props) {
             </HStack>
           ))}
         </VStack>
-      )}
+      </Collapsible>
     </VStack>
   );
 }

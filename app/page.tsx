@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { HStack, VStack, StackItem } from '@astryxdesign/core/Layout';
 import { Heading } from '@astryxdesign/core/Text';
-import { Button } from '@astryxdesign/core/Button';
 import type { AgentStep } from '@/lib/types';
 import { AgentChat } from '@/components/AgentChat';
 import { LiveViewport } from '@/components/LiveViewport';
@@ -62,12 +61,19 @@ export default function Home() {
       for (const type of STREAM_EVENTS) {
         source.addEventListener(type, (event) => {
           if (cancelled) return;
-          if (type !== 'frame') setLastActivityAt(Date.now());
           let message: BrowserEvent;
           try {
             message = JSON.parse((event as MessageEvent).data) as BrowserEvent;
           } catch {
             return;
+          }
+          const action = typeof message.action === 'string' ? message.action : '';
+          const isStatusNoise = action.startsWith('stream_') || action === 'session_status';
+          if (
+            ((type === 'command' || type === 'result') && !isStatusNoise) ||
+            type === 'url'
+          ) {
+            setLastActivityAt(Date.now());
           }
 
           if (type === 'frame') {
@@ -104,14 +110,6 @@ export default function Home() {
         <img src="/logo.png" alt="Megha logo" width={32} height={32} style={{ objectFit: 'contain' }} />
         <Heading level={2}>Megha</Heading>
         <StackItem size="fill" />
-        <Button
-          label={browserHidden ? 'Show browser' : 'Hide browser'}
-          size="sm"
-          variant="secondary"
-          onClick={() => setBrowserHidden((hidden) => !hidden)}
-        >
-          {browserHidden ? 'Show browser' : 'Hide browser'}
-        </Button>
       </HStack>
 
       <HStack className="megha-workspace" style={workspaceStyle}>
@@ -124,11 +122,12 @@ export default function Home() {
               screencasting={screencasting}
               size={size}
               lastActivityAt={lastActivityAt}
+              onHide={() => setBrowserHidden(true)}
             />
           </VStack>
         )}
         <VStack className="megha-chat" style={browserHidden ? { ...chatStyle, flex: '1 1 auto' } : chatStyle}>
-          <AgentChat steps={agentSteps} browserHidden={browserHidden} onSteps={setAgentSteps} />
+          <AgentChat steps={agentSteps} browserHidden={browserHidden} frameData={frame ? `data:image/jpeg;base64,${frame.data}` : null} onSteps={setAgentSteps} onShowBrowser={() => setBrowserHidden(false)} />
         </VStack>
       </HStack>
     </VStack>

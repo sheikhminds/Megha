@@ -5,6 +5,9 @@ import { VStack, HStack, StackItem } from '@astryxdesign/core/Layout';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Card } from '@astryxdesign/core/Card';
 import { Badge } from '@astryxdesign/core/Badge';
+import { Button } from '@astryxdesign/core/Button';
+import { Icon } from '@astryxdesign/core/Icon';
+import { ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
 import type { FrameEvent } from '@/lib/types';
 
 interface Props {
@@ -14,6 +17,7 @@ interface Props {
   screencasting: boolean;
   size: { width: number; height: number };
   lastActivityAt: number;
+  onHide: () => void;
 }
 
 const IDLE_MS = 25_000;
@@ -57,7 +61,7 @@ const SLEEP_CSS = `
 }
 `;
 
-export function LiveViewport({ frame, frameCount, connected, screencasting, size, lastActivityAt }: Props) {
+export function LiveViewport({ frame, frameCount, connected, screencasting, size, lastActivityAt, onHide }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [rendered, setRendered] = useState(false);
@@ -107,6 +111,14 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
           <Text type="supporting" color="secondary">
             {size.width}×{size.height} · {frameCount} frames
           </Text>
+          <Button
+            label="Hide browser"
+            size="sm"
+            variant="ghost"
+            isIconOnly
+            icon={<Icon icon={ChevronDoubleRightIcon} size="sm" />}
+            onClick={onHide}
+          />
         </HStack>
 
         <VStack style={stage}>
@@ -118,7 +130,7 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
                 src="/logo.png"
                 alt=""
                 className={sleeping ? 'megha-sleep-logo' : undefined}
-                style={{ width: 'var(--spacing-16)', height: 'var(--spacing-16)', objectFit: 'contain' }}
+                style={{ width: 'var(--spacing-10)', height: 'var(--spacing-10)', objectFit: 'contain' }}
               />
               <VStack gap={0} align="center">
                 <Text weight="semibold">{sleeping ? 'Browser is resting' : 'Waiting for the first frame…'}</Text>

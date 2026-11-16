@@ -8,21 +8,29 @@
 
 ## Interface
 
-- **Left — Live Viewport:** real-time JPEG frames from the browser, rendered to a canvas.
-- **Right — Agent Chat:** talk to **Megha**, an AI agent that drives the browser with
-  `agent-browser` commands. Each command and its output appear as expandable steps in
-  the conversation, and the result is visible immediately in the live stream.
+- **Live Viewport** — real-time JPEG frames from the browser, rendered to a canvas.
+  After a period with no agent activity it automatically rests on a calm, breathing
+  butterfly screen and wakes as soon as there is work to do.
+- **Hide browser** — collapses the stream so the agent chat can use the full width.
+  While hidden, a **Browser preview** mini card and a collapsible **Agent steps**
+  disclosure sit above the composer — tap the preview to restore the full viewport.
+- **Agent Chat** — talk to **Megha**, an AI agent that drives the browser with
+  `agent-browser` commands. It runs an observe → act → verify loop (up to 8 steps)
+  until the task is finished, and each step is shown as an expandable tool call.
 
-The agent's system prompt is authored in **MDX** (`prompts/megha.mdx`), so the
-instructions are structured, modular and dynamically composed with JSX components.
-It is compiled at runtime and injected as the system message.
+The agent's system prompt is an **MDX** file (`prompts/megha.mdx`), compiled at
+runtime into a composed system message. It uses Reflection AI's Beam model, with a
+local multi-step planner as a fallback.
+
+Built with Astyx components and the neutral theme. Layouts adapt from desktop split
+panes to a stacked mobile view using container queries.
 
 ## Architecture
 
 ```
 agent-browser (Chrome daemon) ──WebSocket──▶ /api/stream (SSE) ──▶ Live viewport
-                                                   ▲
-Agent Chat ──▶ /api/chat ──MDX system prompt──▶ Reflection Beam ──▶ /api/command
+                                                  ▲
+Agent Chat ──▶ /api/chat ──MDX prompt──▶ Reflection Beam ──▶ /api/command
 ```
 
 ## Setup
@@ -42,26 +50,13 @@ REFLECTION_MODEL=Beam-1.0-501B-A23B
 EOF
 ```
 
-Without a key the agent falls back to a local natural-language command planner, so
-the interface still works.
-
-Beam is a reasoning model: the app requests enough tokens for a final `content`
-message, captures `reasoning_content` from each reply, and echoes it back with every
-earlier assistant message on the next turn (which the API requires).
-
 ## Run
 
 ```bash
-npm run dev      # http://localhost:3000
-# or
+npm run dev          # http://localhost:3000
 npm run build && npm start
+npx astryx doctor --built .   # project convention check
 ```
 
-If no browser session exists, the app opens one automatically. Example prompts for
-the agent:
-
-- “Open example.com and tell me the page title”
-- “Show me the interactive elements”
-- “Click the Learn more link”
-- “Check the console for errors”
-- “Take a screenshot”
+Example prompts: “open example.com and tell me the page title”, “show me the
+interactive elements”, “click the Learn more link”, “check the console for errors”.

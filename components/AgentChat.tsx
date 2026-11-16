@@ -1,12 +1,10 @@
 'use client';
 
 import { useEffect, useState, type CSSProperties } from 'react';
-import { VStack, HStack, StackItem } from '@astryxdesign/core/Layout';
+import { VStack, HStack } from '@astryxdesign/core/Layout';
 import { Text } from '@astryxdesign/core/Text';
-import { Heading } from '@astryxdesign/core/Text';
 import { Button } from '@astryxdesign/core/Button';
 import { Avatar } from '@astryxdesign/core/Avatar';
-import { Badge } from '@astryxdesign/core/Badge';
 import {
   ChatLayout,
   ChatMessage,
@@ -24,6 +22,8 @@ interface ChatMessageData {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** Set when this assistant turn asked the user for help. */
+  question?: string;
   reasoning_content?: string;
   steps?: AgentStep[];
   iterations?: number;
@@ -37,12 +37,6 @@ const SUGGESTIONS = [
   'Check the console for errors',
 ];
 
-const headerStyle: CSSProperties = {
-  width: '100%',
-  padding: 'var(--spacing-3) var(--spacing-4)',
-  borderBottom: '1px solid var(--color-border)',
-};
-
 const chatStyle: CSSProperties = { flex: 1, minHeight: 0, width: '100%' };
 
 let idCounter = 0;
@@ -51,10 +45,12 @@ const nextId = () => `m-${Date.now().toString(36)}-${++idCounter}`;
 interface Props {
   steps: AgentStep[];
   browserHidden: boolean;
+  frameData: string | null;
   onSteps: (steps: AgentStep[]) => void;
+  onShowBrowser: () => void;
 }
 
-export function AgentChat({ steps, browserHidden, onSteps }: Props) {
+export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrowser }: Props) {
   const [messages, setMessages] = useState<ChatMessageData[]>([
     {
       id: 'welcome',
@@ -65,6 +61,9 @@ export function AgentChat({ steps, browserHidden, onSteps }: Props) {
   ]);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'local' | 'ai'>('local');
+  /** The agent asked the user for help and is waiting for a reply. */
+  const [waitingForInput, setWaitingForInput] = useState(false);
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/status')
@@ -86,6 +85,7 @@ export function AgentChat({ steps, browserHidden, onSteps }: Props) {
         role: m.role,
         content: m.content,
         ...(m.reasoning_content ? { reasoning_content: m.reasoning_content } : {}),
+        ...(m.question ? { question: m.question } : {}),
       }));
 
     setMessages((current) => [
@@ -111,6 +111,7 @@ export function AgentChat({ steps, browserHidden, onSteps }: Props) {
             ? {
                 ...m,
                 content: data.answer || 'Done.',
+                question: data.question ?? undefined,
                 reasoning_content: data.reasoning_content,
                 steps: data.steps || [],
                 iterations: data.iterations,
@@ -120,7 +121,20 @@ export function AgentChat({ steps, browserHidden, onSteps }: Props) {
             : m,
         ),
       );
+      if (data.question) {
+        // The agent needs the user's help — keep the composer enabled so the
+        // user can reply, but stop treating the turn as busy.
+        setWaitingForInput(true);
+        setCurrentQuestion(data.question);
+        setBusy(false);
+      } else {
+        setWaitingForInput(false);
+        setCurrentQuestion(null);
+        setBusy(false);
+      }
     } catch (error) {
+      setWaitingForInput(false);
+      setCurrentQuestion(null);
       setMessages((current) =>
         current.map((m) =>
           m.id === pendingId
@@ -133,43 +147,32 @@ export function AgentChat({ steps, browserHidden, onSteps }: Props) {
         ),
       );
     } finally {
-      setBusy(false);
+      if (!waitingForInput) setBusy(false);
     }
   };
 
   return (
     <VStack gap={0} style={{ flex: 1, minHeight: 0, width: '100%' }}>
-      <HStack gap={3} vAlign="center" style={headerStyle}>
-        <Avatar name="Megha" size="sm" />
-        <VStack gap={0}>
-          <Heading level={3}>Megha Agent</Heading>
-          <Text type="supporting" color="secondary">Browser control agent</Text>
-        </VStack>
-        <StackItem size="fill" />
-        <Badge variant={mode === 'ai' ? 'green' : 'neutral'} label={mode === 'ai' ? 'AI' : 'LOCAL'} />
-        <Button
-          label="Continue working on the last task"
-          size="sm"
-          variant="secondary"
-          isDisabled={busy || messages.length <= 1}
-          onClick={() => void send('Continue working on the last task until it is finished.')}
-        >
-          Continue
-        </Button>
-      </HStack>
-
       <ChatLayout
         density="compact"
         style={chatStyle}
         emptyState={<Text color="secondary">Ask Megha to control the browser…</Text>}
         composer={
           <VStack gap={2} width="100%">
-            {browserHidden && <AgentStepsBar steps={steps} />}
+            {browserHidden && steps.length > 0 && (
+              <AgentStepsBar steps={steps} frameData={frameData} onShowBrowser={onShowBrowser} />
+            )}
+            {waitingForInput && currentQuestion && (
+              <VStack gap={2} width="100%" padding={2}>
+                <Text weight="semibold">Megha needs your help</Text>
+                <Text type="supporting" color="secondary">{currentQuestion}</Text>
+              </VStack>
+            )}
             <ChatComposer
               onSubmit={(value) => void send(value)}
-              placeholder="Ask Megha to control the browser…"
+              placeholder={waitingForInput ? 'Reply to Megha…' : 'Ask Megha to control the browser…'}
               input={<ChatComposerInput />}
-              isStopShown={busy}
+              isStopShown={busy && !waitingForInput}
               onStop={() => setBusy(false)}
             />
           </VStack>
@@ -203,6 +206,12 @@ export function AgentChat({ steps, browserHidden, onSteps }: Props) {
               {message.iterations !== undefined && message.iterations > 0 && (
                 <Text type="supporting" color="secondary">
                   {message.iterations} step{message.iterations === 1 ? '' : 's'} taken
+                </Text>
+              )}
+
+              {message.question && (
+                <Text type="supporting" color="secondary">
+                  Waiting for your reply…
                 </Text>
               )}
             </ChatMessage>

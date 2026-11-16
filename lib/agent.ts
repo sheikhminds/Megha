@@ -4,6 +4,8 @@ import { buildSystemPrompt } from './prompt';
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** When the assistant asked the user for help, this is the question posed. */
+  question?: string;
   /** Beam requires the reasoning of every earlier assistant message to be echoed back. */
   reasoning_content?: string;
 }
@@ -14,6 +16,8 @@ export interface AgentReply {
   mode: 'local' | 'ai';
   reasoning_content?: string;
   iterations: number;
+  /** When set, the agent paused and is waiting for the user to answer this question. */
+  question?: string;
 }
 
 const COMMANDS = [
@@ -39,6 +43,32 @@ export function planLocally(text: string): Array<{ command: string; reason: stri
   const push = (command: string, reason: string) => {
     if (!steps.some((s) => s.command === command)) steps.push({ command, reason });
   };
+
+  // Compound "open X and search for Y" requests: complete the whole task.
+  const searchQuery = input
+    .match(/(?:search|look up|look for|find)\s+(?:details\s+)?(?:about|on|for)?\s*["“]?([^"”]+?)["”]?\s*$/i)?.[1]
+    ?.trim();
+  const wantsSearch = /\b(search|look up|look for)\b/i.test(input);
+  const openTarget =
+    input.match(/https?:\/\/[^\s"'“”]+/)?.[0] ||
+    input.match(/\b(?:[a-z0-9-]+\.)+(?:com|org|net|dev|io|ai|co)\b/i)?.[0];
+  const wantsOpen = /\b(open|go to|navigate|visit)\b/i.test(input);
+
+  if (wantsSearch && searchQuery) {
+    if (wantsOpen && openTarget) push(`open ${openTarget}`, 'Opening the requested site');
+    push('snapshot -i', 'Finding the search box');
+    push(`find role textbox fill "${searchQuery}"`, `Searching for "${searchQuery}"`);
+    push('press Enter', 'Submitting the search');
+    push('wait 2000', 'Waiting for results');
+    push('snapshot -i', 'Reading the search results');
+    return steps;
+  }
+
+  if (wantsOpen && openTarget && /\b(title)\b/.test(input)) {
+    push(`open ${openTarget}`, 'Opening the requested page');
+    push('get title', 'Reading the page title');
+    return steps;
+  }
 
   // Explicit "then" / chained requests.
   const segments = lower
@@ -157,6 +187,8 @@ export function getProvider(): Provider | null {
 interface AIPlan {
   command: string;
   answer: string;
+  /** Set when the model needs the user's help before it can continue. */
+  question?: string;
   reasoning_content?: string;
   raw: string;
 }
@@ -185,8 +217,14 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
         : { role: m.role, content: m.content },
     );
 
+  // Last resort: a very short prompt that the reasoning model reliably answers.
+  const minimalPrompt =
+    'You are Megha, a browser agent. Respond with ONLY JSON: ' +
+    '{"command":"<one agent-browser command or empty>","answer":"<short answer>"}';
+
   let lastError = '';
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const attemptPrompt = attempt === 2 ? minimalPrompt : systemPrompt;
     const response = await fetch(provider.url, {
       method: 'POST',
       headers: {
@@ -201,7 +239,7 @@ async function planWithAI(messages: ChatMessage[]): Promise<AIPlan | null> {
         messages: [
           {
             role: 'system',
-            content: systemPrompt,
+            content: attemptPrompt,
           },
           ...history,
         ],
@@ -240,6 +278,7 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
   const mode: 'local' | 'ai' = getProvider() ? 'ai' : 'local';
   const steps: AgentReply['steps'] = [];
+  let aiFailed = false;
 
   const execute = async (command: string): Promise<{ output: string; success: boolean }> => {
     const args = safeArgs(command);
@@ -267,12 +306,8 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
       let plan: AIPlan | null;
       try {
         plan = await planWithAI(transcript);
-      } catch (error) {
-        steps.push({
-          command: '(ai)',
-          output: `AI unavailable, switched to local agent. ${error instanceof Error ? error.message : String(error)}`,
-          success: false,
-        });
+      } catch {
+        aiFailed = true;
         plan = null;
         break;
       }
@@ -281,6 +316,19 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
       lastPlan = plan;
 
       const command = String(plan.command || '').trim();
+
+      // The model needs the user's help before it can continue — pause and ask.
+      if (plan.question) {
+        return {
+          answer: plan.answer || `I need your help: ${plan.question}`,
+          steps,
+          mode,
+          question: plan.question,
+          reasoning_content: plan.reasoning_content,
+          iterations: steps.length,
+        };
+      }
+
       if (!command) break; // the model signalled that the task is complete
 
       // Runaway guard: stop if the same command is issued three times in a row.
@@ -309,6 +357,11 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
       });
     }
 
+    // If the model never produced a usable plan, continue with the local
+    // multi-step planner instead of surfacing an error to the user.
+    if (aiFailed && steps.length === 0) {
+      // fall through to local planning below
+    } else {
     const hitLimit = Boolean(lastPlan?.command) && steps.length >= MAX_AGENT_STEPS;
     return {
       answer:
@@ -319,6 +372,7 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
       reasoning_content: lastPlan?.reasoning_content,
       iterations: steps.length,
     };
+    }
   }
 
   const planned = planLocally(lastUser);
@@ -344,7 +398,7 @@ export async function runAgent(messages: ChatMessage[]): Promise<AgentReply> {
   return {
     answer: steps.length === 1 ? `Ran \`${steps[0].command}\`.` : `Ran ${steps.length} commands.`,
     steps,
-    mode,
+    mode: aiFailed ? 'local' : mode,
     iterations: steps.length,
   };
 }

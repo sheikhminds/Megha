@@ -13,10 +13,11 @@ export async function POST(request: Request) {
         .filter((m: { role?: string; content?: unknown }) =>
           (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string')
         .slice(-20)
-        .map((m: { role: 'user' | 'assistant'; content: string; reasoning_content?: string }) => ({
+        .map((m: { role: 'user' | 'assistant'; content: string; reasoning_content?: string; question?: string }) => ({
           role: m.role,
           content: m.content,
-          reasoning_content: typeof m.reasoning_content === 'string' ? m.reasoning_content : undefined,
+          ...(typeof m.reasoning_content === 'string' ? { reasoning_content: m.reasoning_content } : {}),
+          ...(m.question ? { question: m.question } : {}),
         }));
     }
   } catch {
