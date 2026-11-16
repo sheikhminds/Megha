@@ -17,19 +17,15 @@ import {
   ChatToolCalls,
 } from '@astryxdesign/core/Chat';
 import { CodeBlock } from '@astryxdesign/core/CodeBlock';
-
-interface Step {
-  command: string;
-  output: string;
-  success: boolean;
-}
+import { AgentStepsBar } from '@/components/AgentStepsBar';
+import type { AgentStep } from '@/lib/types';
 
 interface ChatMessageData {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   reasoning_content?: string;
-  steps?: Step[];
+  steps?: AgentStep[];
   iterations?: number;
   mode?: 'local' | 'ai';
   pending?: boolean;
@@ -52,7 +48,13 @@ const chatStyle: CSSProperties = { flex: 1, minHeight: 0, width: '100%' };
 let idCounter = 0;
 const nextId = () => `m-${Date.now().toString(36)}-${++idCounter}`;
 
-export function AgentChat() {
+interface Props {
+  steps: AgentStep[];
+  browserHidden: boolean;
+  onSteps: (steps: AgentStep[]) => void;
+}
+
+export function AgentChat({ steps, browserHidden, onSteps }: Props) {
   const [messages, setMessages] = useState<ChatMessageData[]>([
     {
       id: 'welcome',
@@ -92,6 +94,7 @@ export function AgentChat() {
       { id: pendingId, role: 'assistant', content: '', pending: true },
     ]);
     setBusy(true);
+    onSteps([]);
 
     try {
       const response = await fetch('/api/chat', {
@@ -101,6 +104,7 @@ export function AgentChat() {
       });
       const data = await response.json();
       setMode(data.mode === 'ai' ? 'ai' : 'local');
+      onSteps(data.steps || []);
       setMessages((current) =>
         current.map((m) =>
           m.id === pendingId
@@ -159,13 +163,16 @@ export function AgentChat() {
         style={chatStyle}
         emptyState={<Text color="secondary">Ask Megha to control the browser…</Text>}
         composer={
-          <ChatComposer
-            onSubmit={(value) => void send(value)}
-            placeholder="Ask Megha to control the browser…"
-            input={<ChatComposerInput />}
-            isStopShown={busy}
-            onStop={() => setBusy(false)}
-          />
+          <VStack gap={2} width="100%">
+            {browserHidden && <AgentStepsBar steps={steps} />}
+            <ChatComposer
+              onSubmit={(value) => void send(value)}
+              placeholder="Ask Megha to control the browser…"
+              input={<ChatComposerInput />}
+              isStopShown={busy}
+              onStop={() => setBusy(false)}
+            />
+          </VStack>
         }
       >
         <ChatMessageList>

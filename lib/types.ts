@@ -1,3 +1,9 @@
+export interface AgentStep {
+  command: string;
+  output: string;
+  success: boolean;
+}
+
 export interface FrameEvent {
   type: 'frame';
   seq: number;
