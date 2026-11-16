@@ -70,12 +70,13 @@ function StreamingMessageContent({
 interface Props {
   steps: AgentStep[];
   browserHidden: boolean;
+  handoffCount: number;
   frameData: string | null;
   onSteps: (steps: AgentStep[]) => void;
   onShowBrowser: () => void;
 }
 
-export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrowser }: Props) {
+export function AgentChat({ steps, browserHidden, handoffCount, frameData, onSteps, onShowBrowser }: Props) {
   const [messages, setMessages] = useState<ChatMessageData[]>([
     {
       id: 'welcome',
@@ -181,6 +182,17 @@ export function AgentChat({ steps, browserHidden, frameData, onSteps, onShowBrow
       if (!waitingForInput) setBusy(false);
     }
   };
+
+  // When the user hands browser control back, ask the agent to resume its task.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const handledHandoff = useRef(0);
+  useEffect(() => {
+    if (handoffCount > handledHandoff.current) {
+      handledHandoff.current = handoffCount;
+      sendRef.current('I have finished taking control of the browser. Continue the task from where you left off.');
+    }
+  }, [handoffCount]);
 
   return (
     <VStack gap={0} style={{ flex: 1, minHeight: 0, width: '100%' }}>

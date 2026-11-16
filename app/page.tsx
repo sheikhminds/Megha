@@ -26,6 +26,8 @@ export default function Home() {
   const [screencasting, setScreencasting] = useState(false);
   const [size, setSize] = useState({ width: 1280, height: 720 });
   const [browserHidden, setBrowserHidden] = useState(true);
+  const [controlMode, setControlMode] = useState<'agent' | 'user'>('agent');
+  const [handoffCount, setHandoffCount] = useState(0);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
   const lastFrameAt = useRef(0);
@@ -95,6 +97,15 @@ export default function Home() {
     };
   }, []);
 
+  const toggleControl = () => {
+    if (controlMode === 'agent') {
+      setControlMode('user');
+    } else {
+      setControlMode('agent');
+      setHandoffCount((count) => count + 1);
+    }
+  };
+
   return (
     <VStack gap={0} width="100%" height="100dvh" style={{ containerType: 'inline-size', containerName: 'megha' }}>
       <style>{RESPONSIVE_CSS}</style>
@@ -114,12 +125,14 @@ export default function Home() {
               screencasting={screencasting}
               size={size}
               lastActivityAt={lastActivityAt}
+              controlMode={controlMode}
+              onToggleControl={toggleControl}
               onHide={() => setBrowserHidden(true)}
             />
           </VStack>
         )}
         <VStack className="megha-chat" width="100%" minHeight={0} style={browserHidden ? { flex: '1 1 auto', minWidth: 0, minHeight: 0 } : { flex: 'var(--chat-flex)', minWidth: 0, minHeight: 'var(--chat-min-height)' }}>
-          <AgentChat steps={agentSteps} browserHidden={browserHidden} frameData={frame ? `data:image/jpeg;base64,${frame.data}` : null} onSteps={setAgentSteps} onShowBrowser={() => setBrowserHidden(false)} />
+          <AgentChat steps={agentSteps} browserHidden={browserHidden} handoffCount={handoffCount} frameData={frame ? `data:image/jpeg;base64,${frame.data}` : null} onSteps={setAgentSteps} onShowBrowser={() => setBrowserHidden(false)} />
         </VStack>
       </HStack>
     </VStack>

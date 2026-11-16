@@ -33,6 +33,10 @@ const COMMANDS = [
   { name: 'screenshot', description: 'capture the viewport' },
   { name: 'back / forward / reload', description: 'navigate history' },
   { name: 'wait <ms>', description: 'wait for the page to settle' },
+  { name: 'cookies clear', description: 'clear all cookies' },
+  { name: 'storage local clear', description: 'clear localStorage' },
+  { name: 'storage session clear', description: 'clear sessionStorage' },
+  { name: 'network requests --clear', description: 'clear the captured request log' },
 ];
 
 /** Local natural-language planner — maps plain English to agent-browser commands. */
@@ -77,6 +81,21 @@ export function planLocally(text: string): Array<{ command: string; reason: stri
     push(`open ${siteUrl}`, `Opening ${siteName}`);
     push('snapshot -i', 'Reading the page');
     return steps;
+  }
+
+  // Clearing browser data — cookies, web storage and the captured request log.
+  if (/\bclear\b|\bdelete\b|\bwipe\b|\bremove\b/i.test(input)) {
+    if (/\bcookies?\b/i.test(input)) push('cookies clear', 'Clearing cookies');
+    if (/\blocal\s*storage\b|\blocalstorage\b/i.test(input)) push('storage local clear', 'Clearing localStorage');
+    if (/\bsession\s*storage\b|\bsessionstorage\b/i.test(input)) push('storage session clear', 'Clearing sessionStorage');
+    if (/\bnetwork\b|\brequest(s)?\s*log\b/i.test(input)) push('network requests --clear', 'Clearing the request log');
+    if (/\bbrowser\s*data\b|\bsite\s*data\b|\beverything\b|\ball\b/i.test(input) || steps.length === 0) {
+      push('cookies clear', 'Clearing cookies');
+      push('storage local clear', 'Clearing localStorage');
+      push('storage session clear', 'Clearing sessionStorage');
+      push('network requests --clear', 'Clearing the request log');
+    }
+    if (steps.length > 0) return steps;
   }
 
   // Compound "open X and search for Y" requests: complete the whole task.
@@ -335,7 +354,11 @@ const MAX_AGENT_STEPS = 8;
 
 export async function runAgent(messages: ChatMessage[], signal?: AbortSignal): Promise<AgentReply> {
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-  const mode: 'local' | 'ai' = getProvider() ? 'ai' : 'local';
+  // Clearing data is destructive: use the deterministic local planner instead of
+  // letting the model invent UI steps or unsupported commands.
+  const wantsClearData = /\b(clear|wipe|delete|erase)\b/i.test(lastUser) &&
+    /\b(browsers?|cookies?|storages?|cache|site|requests?|data|logs?)\b/i.test(lastUser);
+  const mode: 'local' | 'ai' = !wantsClearData && getProvider() ? 'ai' : 'local';
   const steps: AgentReply['steps'] = [];
   let aiFailed = false;
 
@@ -459,7 +482,9 @@ export async function runAgent(messages: ChatMessage[], signal?: AbortSignal): P
     .trim();
 
   return {
-    answer: signal?.aborted ? 'Stopped.' : /\b(create|make|open|set up)\b.*\b(account|profile)\b|\bsign up\b|\bregister\b/i.test(lastUser)
+    answer: signal?.aborted ? 'Stopped.' : /\bclear\b|\bwipe\b/i.test(lastUser)
+      ? `Cleared: ${steps.map((step) => step.command).join(', ')}.`
+      : /\b(create|make|open|set up)\b.*\b(account|profile)\b|\bsign up\b|\bregister\b/i.test(lastUser)
       ? 'Opened the sign-up page. I need your details (name, email, password, birthday) to fill the form.'
       : steps.length === 1 ? `Ran \`${steps[0].command}\`.` : `Ran ${steps.length} commands.`,
     steps,

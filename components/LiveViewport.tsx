@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type WheelEvent } from 'react';
 import { VStack, HStack, StackItem } from '@astryxdesign/core/Layout';
-import { Center } from '@astryxdesign/core/Center';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Card } from '@astryxdesign/core/Card';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Icon } from '@astryxdesign/core/Icon';
-import { ChevronDoubleRightIcon } from '@heroicons/react/24/outline';
+import { Badge } from '@astryxdesign/core/Badge';
+import { Center } from '@astryxdesign/core/Center';
+import { ChevronDoubleRightIcon, HandRaisedIcon } from '@heroicons/react/24/outline';
 import type { FrameEvent } from '@/lib/types';
 
 interface Props {
@@ -17,6 +18,8 @@ interface Props {
   screencasting: boolean;
   size: { width: number; height: number };
   lastActivityAt: number;
+  controlMode: 'agent' | 'user';
+  onToggleControl: () => void;
   onHide: () => void;
 }
 
@@ -39,9 +42,14 @@ const canvasStyle: CSSProperties = {
   objectFit: 'contain',
   borderRadius: 'var(--radius-md)',
 };
-const overlayStyle: CSSProperties = {
+const overlayStyle: CSSProperties = { position: 'absolute', inset: 0 };
+const hintStyle: CSSProperties = {
   position: 'absolute',
-  inset: 0,
+  insetInline: 0,
+  bottom: 0,
+  padding: 'var(--spacing-2) var(--spacing-3)',
+  background: 'var(--color-background-muted)',
+  borderTop: '1px solid var(--color-border)',
 };
 
 const SLEEP_CSS = `
@@ -55,11 +63,36 @@ const SLEEP_CSS = `
 }
 `;
 
-export function LiveViewport({ frame, frameCount, connected, screencasting, size, lastActivityAt, onHide }: Props) {
+async function inject(event: Record<string, unknown>) {
+  try {
+    await fetch('/api/input', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event }),
+    });
+  } catch {
+    /* the next event will retry */
+  }
+}
+
+export function LiveViewport({
+  frame,
+  frameCount,
+  connected,
+  screencasting,
+  size,
+  lastActivityAt,
+  controlMode,
+  onToggleControl,
+  onHide,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const lastMoveAt = useRef(0);
   const [rendered, setRendered] = useState(false);
   const [sleeping, setSleeping] = useState(false);
+
+  const userControl = controlMode === 'user';
 
   useEffect(() => {
     if (Date.now() - lastActivityAt < IDLE_MS) setSleeping(false);
@@ -92,6 +125,57 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
     image.src = `data:image/jpeg;base64,${frame.data}`;
   }, [frame, sleeping]);
 
+  const pointFor = (element: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const rect = element.getBoundingClientRect();
+    const width = frame?.metadata?.deviceWidth || size.width;
+    const height = frame?.metadata?.deviceHeight || size.height;
+    return {
+      x: Math.round(((clientX - rect.left) / Math.max(rect.width, 1)) * width),
+      y: Math.round(((clientY - rect.top) / Math.max(rect.height, 1)) * height),
+    };
+  };
+
+  const onPointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (!userControl) return;
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    void inject({ type: 'input_mouse', eventType: 'mousePressed', ...pointFor(event.currentTarget, event.clientX, event.clientY), button: 'left', clickCount: 1 });
+  };
+
+  const onPointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (!userControl) return;
+    const now = Date.now();
+    if (now - lastMoveAt.current < 30) return;
+    lastMoveAt.current = now;
+    void inject({ type: 'input_mouse', eventType: 'mouseMoved', ...pointFor(event.currentTarget, event.clientX, event.clientY) });
+  };
+
+  const onPointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (!userControl) return;
+    void inject({ type: 'input_mouse', eventType: 'mouseReleased', ...pointFor(event.currentTarget, event.clientX, event.clientY), button: 'left' });
+  };
+
+  const onWheel = (event: WheelEvent<HTMLCanvasElement>) => {
+    if (!userControl) return;
+    event.preventDefault();
+    void inject({ type: 'input_mouse', eventType: 'mouseWheel', ...pointFor(event.currentTarget, event.clientX, event.clientY), deltaX: event.deltaX, deltaY: event.deltaY });
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
+    if (!userControl) return;
+    const base: Record<string, unknown> = { type: 'input_keyboard', key: event.key, code: event.code };
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+      base.modifiers = (event.ctrlKey || event.metaKey ? 2 : 0) | (event.altKey ? 1 : 0) | (event.shiftKey ? 8 : 0);
+    }
+    void inject({ ...base, eventType: 'keyDown' });
+    if (event.key.length === 1) void inject({ type: 'input_keyboard', eventType: 'char', text: event.key });
+  };
+
+  const onKeyUp = (event: KeyboardEvent<HTMLCanvasElement>) => {
+    if (!userControl) return;
+    void inject({ type: 'input_keyboard', eventType: 'keyUp', key: event.key, code: event.code });
+  };
+
   const live = connected && screencasting && !sleeping;
 
   return (
@@ -101,12 +185,18 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
         <HStack gap={3} vAlign="center" width="100%" padding={3}>
           <Heading level={3}>Live Viewport</Heading>
           <StackItem size="fill" />
-          <Text type="supporting" color="secondary">
-            {sleeping ? 'Resting' : live ? 'Live' : 'Waiting'}
-          </Text>
+          <Badge variant={userControl ? 'blue' : sleeping ? 'neutral' : live ? 'green' : 'neutral'} label={userControl ? 'Your control' : sleeping ? 'Resting' : live ? 'Live' : 'Waiting'} />
           <Text type="supporting" color="secondary">
             {size.width}×{size.height} · {frameCount} frames
           </Text>
+          <IconButton
+            label={userControl ? 'Return control to Megha' : 'Take control of browser'}
+            tooltip={userControl ? 'Return control to Megha' : 'Take control (solve a CAPTCHA, then hand back)'}
+            size="sm"
+            variant={userControl ? 'primary' : 'ghost'}
+            icon={<Icon icon={HandRaisedIcon} size="sm" />}
+            onClick={onToggleControl}
+          />
           <IconButton
             label="Hide browser"
             tooltip="Hide browser"
@@ -118,7 +208,18 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
         </HStack>
 
         <VStack style={stage} padding={3} hAlign="center" vAlign="center">
-          <canvas ref={canvasRef} style={{ ...canvasStyle, visibility: sleeping || !rendered ? 'hidden' : 'visible' }} aria-label="Live browser viewport" />
+          <canvas
+            ref={canvasRef}
+            style={{ ...canvasStyle, visibility: sleeping || !rendered ? 'hidden' : 'visible', cursor: userControl ? 'crosshair' : undefined }}
+            aria-label="Live browser viewport"
+            tabIndex={userControl ? 0 : -1}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onWheel={onWheel}
+            onKeyDown={onKeyDown}
+            onKeyUp={onKeyUp}
+          />
 
           {(sleeping || !rendered) && (
             <Center style={overlayStyle}>
@@ -139,6 +240,15 @@ export function LiveViewport({ frame, frameCount, connected, screencasting, size
                 </VStack>
               </VStack>
             </Center>
+          )}
+
+          {userControl && (
+            <VStack style={hintStyle} gap={0}>
+              <Text weight="semibold">You control the browser</Text>
+              <Text type="supporting" color="secondary">
+                Click, type and scroll to solve the CAPTCHA, then tap the hand icon to let Megha continue.
+              </Text>
+            </VStack>
           )}
         </VStack>
       </VStack>
