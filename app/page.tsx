@@ -127,6 +127,7 @@ export default function Home() {
               lastActivityAt={lastActivityAt}
               controlMode={controlMode}
               onToggleControl={toggleControl}
+              onActivity={() => setLastActivityAt(Date.now())}
               onHide={() => setBrowserHidden(true)}
             />
           </VStack>

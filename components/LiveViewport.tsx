@@ -20,6 +20,7 @@ interface Props {
   lastActivityAt: number;
   controlMode: 'agent' | 'user';
   onToggleControl: () => void;
+  onActivity: () => void;
   onHide: () => void;
 }
 
@@ -63,7 +64,8 @@ const SLEEP_CSS = `
 }
 `;
 
-async function inject(event: Record<string, unknown>) {
+async function inject(event: Record<string, unknown>, onActivity?: () => void) {
+  onActivity?.();
   try {
     await fetch('/api/input', {
       method: 'POST',
@@ -84,6 +86,7 @@ export function LiveViewport({
   lastActivityAt,
   controlMode,
   onToggleControl,
+  onActivity,
   onHide,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -95,15 +98,23 @@ export function LiveViewport({
   const userControl = controlMode === 'user';
 
   useEffect(() => {
+    if (userControl) {
+      setSleeping(false);
+      return;
+    }
     if (Date.now() - lastActivityAt < IDLE_MS) setSleeping(false);
-  }, [lastActivityAt]);
+  }, [lastActivityAt, userControl]);
 
   useEffect(() => {
+    if (userControl) {
+      setSleeping(false);
+      return;
+    }
     const timer = setInterval(() => {
       setSleeping(Date.now() - lastActivityAt >= IDLE_MS);
     }, 5000);
     return () => clearInterval(timer);
-  }, [lastActivityAt]);
+  }, [lastActivityAt, userControl]);
 
   useEffect(() => {
     if (!frame?.data || sleeping) return;
@@ -139,7 +150,7 @@ export function LiveViewport({
     if (!userControl) return;
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
-    void inject({ type: 'input_mouse', eventType: 'mousePressed', ...pointFor(event.currentTarget, event.clientX, event.clientY), button: 'left', clickCount: 1 });
+    void inject({ type: 'input_mouse', eventType: 'mousePressed', ...pointFor(event.currentTarget, event.clientX, event.clientY), button: 'left', clickCount: 1 }, onActivity);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -147,18 +158,18 @@ export function LiveViewport({
     const now = Date.now();
     if (now - lastMoveAt.current < 30) return;
     lastMoveAt.current = now;
-    void inject({ type: 'input_mouse', eventType: 'mouseMoved', ...pointFor(event.currentTarget, event.clientX, event.clientY) });
+    void inject({ type: 'input_mouse', eventType: 'mouseMoved', ...pointFor(event.currentTarget, event.clientX, event.clientY) }, onActivity);
   };
 
   const onPointerUp = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!userControl) return;
-    void inject({ type: 'input_mouse', eventType: 'mouseReleased', ...pointFor(event.currentTarget, event.clientX, event.clientY), button: 'left' });
+    void inject({ type: 'input_mouse', eventType: 'mouseReleased', ...pointFor(event.currentTarget, event.clientX, event.clientY), button: 'left' }, onActivity);
   };
 
   const onWheel = (event: WheelEvent<HTMLCanvasElement>) => {
     if (!userControl) return;
     event.preventDefault();
-    void inject({ type: 'input_mouse', eventType: 'mouseWheel', ...pointFor(event.currentTarget, event.clientX, event.clientY), deltaX: event.deltaX, deltaY: event.deltaY });
+    void inject({ type: 'input_mouse', eventType: 'mouseWheel', ...pointFor(event.currentTarget, event.clientX, event.clientY), deltaX: event.deltaX, deltaY: event.deltaY }, onActivity);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
@@ -167,13 +178,13 @@ export function LiveViewport({
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
       base.modifiers = (event.ctrlKey || event.metaKey ? 2 : 0) | (event.altKey ? 1 : 0) | (event.shiftKey ? 8 : 0);
     }
-    void inject({ ...base, eventType: 'keyDown' });
-    if (event.key.length === 1) void inject({ type: 'input_keyboard', eventType: 'char', text: event.key });
+    void inject({ ...base, eventType: 'keyDown' }, onActivity);
+    if (event.key.length === 1) void inject({ type: 'input_keyboard', eventType: 'char', text: event.key }, onActivity);
   };
 
   const onKeyUp = (event: KeyboardEvent<HTMLCanvasElement>) => {
     if (!userControl) return;
-    void inject({ type: 'input_keyboard', eventType: 'keyUp', key: event.key, code: event.code });
+    void inject({ type: 'input_keyboard', eventType: 'keyUp', key: event.key, code: event.code }, onActivity);
   };
 
   const live = connected && screencasting && !sleeping;
